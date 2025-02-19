@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class Config:
     """Base configuration (shared across environments)"""
     PORT = 5000
@@ -30,9 +31,10 @@ class Config:
     # Recognition Settings
     RECOGNITION_MODEL_NAME = "VGG-Face"
     RECOGNITION_DISTANCE_METRIC = "cosine"
+    RECOGNITION_DETECTOR_BACKEND = "opencv"
     RECOGNITION_MIN_CONFIDENCE = 0.5
     RECOGNITION_THRESHOLD = 0.35
-    RECOGNITION_FRAME_RATE = 15
+    RECOGNITION_FRAME_RATE = 30
 
     # Contacts
     CONTACTS = {
@@ -40,10 +42,11 @@ class Config:
         "phones": ["+15551234567", "+15557654321"],
     }
 
+
 class DevelopmentConfig(Config):
     """Development-specific configuration"""
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///localdb.sqlite' 
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///localdb.sqlite'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 
@@ -52,7 +55,6 @@ class ProductionConfig(Config):
     DEBUG = False
 
 
-# Configuration dictionary for selecting the environment
 config_dict = {
     "development": DevelopmentConfig,
     "production": ProductionConfig,

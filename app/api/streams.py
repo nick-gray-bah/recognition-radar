@@ -3,26 +3,27 @@ import datetime
 import threading
 import logging
 import cv2
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app as app
 from app import db
 from app.models import Stream
 
 from app.api.utils import validate_active_field
-from app.utils.monitoring import monitor_stream
+from app.utils.stream_monitor import StreamMonitor
 
 logger = logging.getLogger(__name__)
 streams_bp = Blueprint('streams', __name__)
 
-# tracks all active threads in the app
+# tracks all active StreamMonitor instances
 # i hate this, will find an alternative
-active_threads = {}
+active_streams = {}
+
 
 @streams_bp.route('/streams/activate', methods=['PUT'])
 def activate_stream():
     """activate or deactivate existing stream"""
     data = request.json
-    if not data or 'stream_url' not in data or 'active' not in data:
-        return jsonify({'error': 'Missing required fields'}), 400
+    if not data or 'stream_url' not in data:
+        return jsonify({'error': 'Missing required field: stream_url'}), 400
 
     active = validate_active_field(data['active'])
 
@@ -31,32 +32,47 @@ def activate_stream():
 
     stream_url = data['stream_url']
 
-    existing_stream = Stream.query.filter_by(stream_url=stream_url).first()
+    try:
+        existing_stream = Stream.query.filter_by(stream_url=stream_url).first()
 
-    if not existing_stream:
-        return jsonify({
-            'message': f"Stream with URL {stream_url} does not exist",
-        }), 404
+        if not existing_stream:
+            return jsonify({
+                'message': f"Stream with URL {stream_url} does not exist",
+            }), 404
 
-    if active == True:
-      existing_stream.active = True
-      existing_stream.started_at = datetime.datetime.utcnow()
-      db.session.commit()
+        if active == True:
+            # update Stream in db to active
+            existing_stream.active = True
+            existing_stream.started_at = datetime.datetime.utcnow()
+            db.session.commit()
 
-      thread = threading.Thread(target=monitor_stream, args=(
-          existing_stream.stream_id, stream_url))
-      thread.daemon = True
-      thread.start()
-      active_threads[existing_stream.stream_id] = thread
-      return jsonify({'message': f"Stream with URL {stream_url} activated",}), 200
-      
-    if active == False:
-      existing_stream.active = False
-      db.session.commit()
-      thread = active_threads.pop(existing_stream.stream_id, default=None)
-      if thread:
-          thread.join()
-      return jsonify({'message': f"Stream with URL {stream_url} deactivated",}), 200
+            # create new StreamMonitor
+            active_app = app._get_current_object()
+            new_stream = StreamMonitor(
+                active_app, existing_stream.stream_id, existing_stream.stream_url)
+            new_stream.run()
+            active_streams[new_stream.stream_id] = new_stream
+            print(active_streams)
+
+            return jsonify({'message': f"Stream with URL {stream_url} activated", }), 200
+
+        if active == False:
+            # update Stream in db to inactive
+            existing_stream.active = False
+            db.session.commit()
+
+            # delete associated StreamMonitor
+            stream = active_streams.pop(
+                existing_stream.stream_id, None)
+            if stream:
+                stream.stop()
+            print(active_streams)
+
+            return jsonify({'message': f"Stream with URL {stream_url} deactivated", }), 200
+
+    except Exception as e:
+        logger.warning(e)
+        return jsonify('internal server error'), 500
 
 
 @streams_bp.route('/streams', methods=['POST'])
@@ -69,47 +85,17 @@ def add_stream():
 
     stream_url = data['stream_url']
 
-    # Check if the stream URL already exists
-    existing_stream = Stream.query.filter_by(stream_url=stream_url).first()
-
-    # Case 1: Stream already exists and has active thread
-    if existing_stream and existing_stream.active and active_threads[existing_stream.stream_id]:
-        return jsonify({
-            'message': f"Stream with URL {stream_url} is already being monitored",
-            'stream_id': existing_stream.stream_id,
-            'active': 'True'
-        }), 200
-
-    # Case 2: Stream exists but does not have active thread
-    if existing_stream and not existing_stream.active or not active_threads[existing_stream.stream_id]:
-        existing_stream.active = True
-        existing_stream.started_at = datetime.datetime.utcnow()
-        db.session.commit()
-
-        thread = threading.Thread(target=monitor_stream, args=(
-            existing_stream.stream_id, stream_url))
-        thread.daemon = True
-        thread.start()
-        active_threads[existing_stream.stream_id] = thread
-
-        logger.info(
-            f"Reactivated monitoring for stream: {existing_stream.stream_id} ({stream_url})")
-        return jsonify({
-            'message': f"Stream with URL {stream_url} has been reactivated",
-            'stream_id': existing_stream.stream_id,
-            'active': 'True'
-        }), 200
-
-    # Case 3: Stream doesn't exist, create a new one
     try:
-        if stream_url == '0':
-            stream_url = 0
+        existing_stream = Stream.query.filter_by(stream_url=stream_url).first()
 
-        cap = cv2.VideoCapture(stream_url)
-        if not cap.isOpened():
-            return jsonify({'error': f"Could not open stream: {stream_url}"}), 400
-        cap.release()
+        if existing_stream:
+            return jsonify({
+                'message': f"Stream with URL {stream_url} already exists",
+                'stream_id': existing_stream.stream_id,
+                'active': existing_stream.active
+            }), 200
 
+        # create new Stream in db
         stream_id = str(uuid.uuid4())
         new_stream = Stream(
             stream_id=stream_id,
@@ -120,12 +106,13 @@ def add_stream():
         db.session.add(new_stream)
         db.session.commit()
 
-        # Start stream monitoring in a separate thread
-        thread = threading.Thread(
-            target=monitor_stream, args=(stream_id, stream_url))
-        thread.daemon = True
-        thread.start()
-        active_threads[existing_stream.stream_id] = thread
+        # create new StreamMonitor
+        active_app = app._get_current_object()
+        new_stream = StreamMonitor(
+            active_app, stream_id, stream_url)
+        new_stream.run()
+        active_streams[stream_id] = new_stream
+        logger.info(active_streams)
 
         logger.info(f"Started monitoring stream: {stream_id} ({stream_url})")
         return jsonify({
@@ -136,4 +123,4 @@ def add_stream():
 
     except Exception as e:
         logger.error(f"Error adding stream with URL {stream_url}: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'failed to add new stream'}), 500
