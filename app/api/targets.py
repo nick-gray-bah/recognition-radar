@@ -43,18 +43,17 @@ def add_target():
     target_id = str(uuid.uuid4())
 
     try:        
-        # Save the target image
-        # TODO: Eventually we will replace with S3
         filename = secure_filename(
-            f"{target_id}{os.path.splitext(file.filename)[1]}")
-        filepath = os.path.join(TARGET_DIR, filename)
+            f"{target_name}{os.path.splitext(file.filename)[1]}")
+        target_path = os.mkdir(target_name)
+        filepath = os.path.join(TARGET_DIR, target_path, filename)
         file.save(filepath)
 
         embedding = DeepFace.represent(filepath, model_name=RECOGNITION_MODEL)[
             0]['embedding']
 
         new_target = Target(target_id=target_id, target_name=target_name,
-                            embedding=embedding, image_path=filepath)
+                            embedding=embedding, target_path=target_path)
         db.session.add(new_target)
         db.session.commit()
 

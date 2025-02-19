@@ -27,6 +27,7 @@ class Config:
     # Recognition Settings
     MODEL_NAME = "VGG-Face"
     DISTANCE_METRIC = "cosine"
+    MIN_CONFIDENCE = 0.5
     THRESHOLD = 0.35
 
     # Contacts

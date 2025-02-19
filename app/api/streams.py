@@ -70,7 +70,7 @@ def add_stream():
         db.session.add(new_stream)
         db.session.commit()
 
-        # Start the stream monitoring in a separate thread
+        # Start stream monitoring in a separate thread
         thread = threading.Thread(
             target=monitor_stream, args=(stream_id, stream_url))
         thread.daemon = True

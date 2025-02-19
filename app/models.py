@@ -8,13 +8,13 @@ class Target(db.Model):
     target_id = db.Column(db.String(80), unique=True, nullable=False)
     target_name = db.Column(db.String(120), nullable=False)
     embedding = db.Column(db.PickleType, nullable=False)
-    image_path = db.Column(db.String(255), nullable=False)
+    target_path = db.Column(db.String(255), nullable=False)
 
     def to_dict(self):
         return {
             'target_id': self.target_id,
             'embedding': self.embedding,
-            'image_path': self.image_path
+            'target_path': self.target_path
         }
 
 
