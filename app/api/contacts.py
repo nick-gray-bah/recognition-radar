@@ -1,10 +1,11 @@
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models import Contact
-from utils import validate_input
+from .utils import validate_input
 import re
 
 contacts_bp = Blueprint('contacts', __name__)
+
 
 def is_valid_email(email):
     """
@@ -12,6 +13,7 @@ def is_valid_email(email):
     """
     email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
     return re.match(email_regex, email) is not None
+
 
 @contacts_bp.route('/add_contact', methods=['POST'])
 def add_contact():
@@ -33,18 +35,21 @@ def add_contact():
             return jsonify({'error': 'Invalid email format'}), 400
 
         # Check for existing contact (avoid duplicate emails)
-        existing_contact = Contact.query.filter_by(contact_email=data['contact_email']).first()
+        existing_contact = Contact.query.filter_by(
+            contact_email=data['contact_email']).first()
         if existing_contact:
             return jsonify({'error': 'Contact with this email already exists'}), 400
 
-        new_contact = Contact(contact_name=data['contact_name'], contact_email=data['contact_email'])
+        new_contact = Contact(
+            contact_name=data['contact_name'], contact_email=data['contact_email'], active=True)
         db.session.add(new_contact)
         db.session.commit()
 
-        return jsonify({'message': 'Contact added!'}), 201
+        return jsonify({'message': 'Contact added!', 'contact': f'{new_contact.to_dict()}'}), 201
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 @contacts_bp.route('/contacts', methods=['GET'])
 def get_contacts():
@@ -54,6 +59,7 @@ def get_contacts():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 @contacts_bp.route('/contacts/<int:id>', methods=['GET'])
 def get_contact_by_id(id):
@@ -65,6 +71,7 @@ def get_contact_by_id(id):
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 @contacts_bp.route('/contacts/<int:id>', methods=['DELETE'])
 def delete_contact(id):

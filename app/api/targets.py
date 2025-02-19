@@ -1,17 +1,15 @@
 import logging
 import os
 import uuid
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app as app, jsonify, request
 from werkzeug.utils import secure_filename
 from deepface import DeepFace
+
 from app import db
 from app.models import Target
 
 logger = logging.getLogger(__name__)
 targets_bp = Blueprint('targets', __name__)
-
-TARGET_DIR = current_app.config['TARGET_DIR']
-RECOGNITION_MODEL = current_app.config['RECOGNITION_MODEL']
 
 
 @targets_bp.route('/api/targets', methods=['GET'])
@@ -38,11 +36,14 @@ def add_target():
 
     if 'target_name' not in request.form:
         return jsonify({'error': 'No target name provided'}), 400
-      
+
     target_name = request.form['target_name']
     target_id = str(uuid.uuid4())
 
-    try:        
+    TARGET_DIR = app.config['TARGET_DIR']
+    RECOGNITION_MODEL = app.config['RECOGNITION_MODEL']
+
+    try:
         filename = secure_filename(
             f"{target_name}{os.path.splitext(file.filename)[1]}")
         target_path = os.mkdir(target_name)

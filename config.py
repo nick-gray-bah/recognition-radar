@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class Config:
     """Base configuration (shared across environments)"""
@@ -25,10 +28,11 @@ class Config:
     SMTP_PORT = 587
 
     # Recognition Settings
-    MODEL_NAME = "VGG-Face"
-    DISTANCE_METRIC = "cosine"
-    MIN_CONFIDENCE = 0.5
-    THRESHOLD = 0.35
+    RECOGNITION_MODEL_NAME = "VGG-Face"
+    RECOGNITION_DISTANCE_METRIC = "cosine"
+    RECOGNITION_MIN_CONFIDENCE = 0.5
+    RECOGNITION_THRESHOLD = 0.35
+    RECOGNITION_FRAME_RATE = 15
 
     # Contacts
     CONTACTS = {
