@@ -77,8 +77,8 @@ def remove_target(target_id):
         db.session.delete(target)
         db.session.commit()
 
-        if os.path.exists(target.image_path):
-            os.remove(target.image_path)
+        if os.path.exists(target.target_path):
+            os.remove(target.target_path)
 
         logger.info(f"Removed target: {target_id}")
         return jsonify({'success': True})

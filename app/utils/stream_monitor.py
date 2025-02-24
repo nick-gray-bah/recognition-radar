@@ -14,13 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 class StreamMonitor(threading.Thread):
-    def __init__(self, app, stream_id, stream_url=0, max_queue=30, daemon=True):
+    def __init__(self, app, stream_id, stream_url=0, max_queue=60, daemon=True):
         super().__init__(daemon=daemon)
         self.app = app
         self.stream_id = stream_id
         self.stream_url = stream_url
         self.active = False
         self.recording = False
+        self.empty_frames = 0
 
         # OpenCV Video Capture
         self.cap = cv2.VideoCapture(int(stream_url))
@@ -29,20 +30,19 @@ class StreamMonitor(threading.Thread):
             self.active = False
             return
 
-        # Frame Queue
+        # frame queue
         self.queue = queue.Queue(maxsize=max_queue)
 
-        # Capture and processing Threads
+        # capture and processing threads
         self.capture_thread = threading.Thread(
             target=self._capture_frames, daemon=True)
 
         self.process_thread = threading.Thread(
             target=self._process_frames, daemon=True)
 
-        # Video Writer Variables
+        # recordings
         self.video_writer = None
         self.out_path = None
-
 
     def _start_recording(self):
         """Start a new recording session."""
@@ -57,10 +57,10 @@ class StreamMonitor(threading.Thread):
 
         self.video_writer = cv2.VideoWriter(
             self.out_path, fourcc, 20.0, (frame_width, frame_height))
+
         self.recording = True
 
         logger.info(f"🎥 Started recording: {self.out_path}")
-
 
     def _stop_recording(self):
         """Stop the current recording session."""
@@ -69,11 +69,9 @@ class StreamMonitor(threading.Thread):
             logger.info(f"✅ Saved recording: {self.out_path}")
             self.video_writer = None
             self.out_path = None
-
             # add logic to save the recording to S3 and delete local file
 
         self.recording = False
-
 
     def _capture_frames(self):
         """Continuously capture frames and store them in a queue."""
@@ -85,43 +83,50 @@ class StreamMonitor(threading.Thread):
                 break
 
             if self.queue.full():
-                self.queue.get()  # Drop the oldest frame
-
+                self.queue.get()
             self.queue.put(frame)
 
-
     def _process_frames(self):
-        """Process frames, detect targets, and handle recording logic."""
-        while self.active:
-            try:
-                frame = self.queue.get(timeout=1)
-            except queue.Empty:
-                continue
+      while self.active:
+          try:
+              frame = self.queue.get(timeout=1)
+          except queue.Empty:
+              continue
 
-            try:
-                results = DeepFace.find(
-                    img_path=frame,
-                    db_path=self.app.config["TARGET_DIR"],
-                    model_name=self.app.config["RECOGNITION_MODEL_NAME"],
-                    distance_metric=self.app.config["RECOGNITION_DISTANCE_METRIC"],
-                    detector_backend=self.app.config["RECOGNITION_DETECTOR_BACKEND"],
-                    enforce_detection=False,
-                    silent=True,
-                )
+          try:
+              results = DeepFace.find(
+                  img_path=frame,
+                  db_path=self.app.config["TARGET_DIR"],
+                  model_name=self.app.config["RECOGNITION_MODEL_NAME"],
+                  distance_metric=self.app.config["RECOGNITION_DISTANCE_METRIC"],
+                  detector_backend=self.app.config["RECOGNITION_DETECTOR_BACKEND"],
+                  enforce_detection=True,  # Force detection
+                  silent=True,
+              )
 
-                if results and not results[0].empty:
-                    if not self.recording:
-                        self._start_recording()
+              if not results or results[0].empty:
+                  raise ValueError("No faces detected in frame")
 
-                    self.video_writer.write(frame)
+              for result in results[0].to_dict('records'):
+                  x, y, w, h = result['source_x'], result['source_y'], result['source_w'], result['source_h']
+                  identity = result.get('identity', 'Unknown').split('/')[1]
+                  
+                  if identity!= 'Unknown':
+                    logger.info(f'hi {identity}')
+                  
+                  cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                  cv2.putText(frame, identity, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
 
-                    # TODO: add logic here to send notifications
+              if not self.recording:
+                  self._start_recording()
+                  
+              self.video_writer.write(frame)
+              self.empty_frames = 0
 
-                elif self.recording:
-                    self._stop_recording()
-
-            except Exception as e:
-                logger.error(f"Error processing frame: {str(e)}")
+          except Exception as e:
+              self.empty_frames += 1
+              if self.empty_frames >= 15 and self.recording:
+                  self._stop_recording()
 
 
     def run(self):
@@ -129,7 +134,6 @@ class StreamMonitor(threading.Thread):
         self.active = True
         self.capture_thread.start()
         self.process_thread.start()
-
 
     def stop(self):
         """stop monitoring"""

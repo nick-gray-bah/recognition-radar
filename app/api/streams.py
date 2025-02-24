@@ -14,9 +14,7 @@ logger = logging.getLogger(__name__)
 streams_bp = Blueprint('streams', __name__)
 
 # tracks all active StreamMonitor instances
-# i hate this, will find an alternative
 active_streams = {}
-
 
 @streams_bp.route('/streams/activate', methods=['PUT'])
 def activate_stream():
