@@ -8,7 +8,7 @@ from app import db
 from app.models import Stream
 
 from app.api.utils import validate_active_field
-from app.utils.stream_monitor import StreamMonitor
+from app.stream_monitor import StreamMonitor
 
 logger = logging.getLogger(__name__)
 streams_bp = Blueprint('streams', __name__)
